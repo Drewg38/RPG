@@ -1,4 +1,5 @@
 
+/*! game.js v2.2 (uses fancy-d20 when available) */
 (function(){
   "use strict";
   if (window.__rpg_game_booted) return;
@@ -16,13 +17,14 @@
   function wrapHeight(text, maxW, lineH, font){ var prev=ctx.font; if(font) ctx.font=font; var w=splitWords(text), line='', h=lineH; for(var i=0;i<w.length;i++){ var t=line+w[i]+' '; if(ctx.measureText(t).width>maxW){ line=w[i]+' '; h+=lineH; } else { line=t; } } if(font) ctx.font=prev; return h; }
   function wrap(text,x,y,maxW,lineH,font){ var prev=ctx.font; if(font) ctx.font=font; var w=splitWords(text), line=''; for(var i=0;i<w.length;i++){ var t=line+w[i]+' '; if(ctx.measureText(t).width>maxW){ ctx.fillText(line,x,y); line=w[i]+' '; y+=lineH; } else { line=t; } } ctx.fillText(line,x,y); if(font) ctx.font=prev; return y+lineH; }
 
-  // Content from CSV
+  // Content from CSV (provided by content.js)
   var pages   = (window.RPG_CONTENT && window.RPG_CONTENT.pages) || {};
   var startId = (window.RPG_CONTENT && window.RPG_CONTENT.startId) || Object.keys(pages)[0] || null;
   if(!startId){ console.error("[game.js] No pages found"); return; }
   var currentId = startId;
   var current   = pages[currentId];
 
+  // Hero header image
   var hero = new Image(); hero.crossOrigin="anonymous"; var heroReady=false;
   function loadHero(src){
     heroReady=false; if(!src) return;
@@ -40,6 +42,7 @@
     stats: { Mind:0, Body:0, Spirit:0, Luck:0 }
   };
 
+  // Stars
   var starCanvas=null, starFor={w:0,h:0};
   function rebuildStars(W,H){
     var oc=document.createElement('canvas'); oc.width=W; oc.height=H;
@@ -69,7 +72,7 @@
     state.rects.scene={x:pad,y:pad,w:W-pad*2,h:12+imgH+12+26+h};
 
     var trayTop = state.rects.scene.y + state.rects.scene.h + 20;
-    var trayH   = Math.max(220, Math.round((canvas.height/DPR)*0.42)); // Taller tray
+    var trayH   = Math.max(240, Math.round((canvas.height/DPR)*0.42)); // Taller tray
     state.rects.tray={x:pad,y:trayTop,w:W-pad*2,h:trayH};
 
     state.d.x=state.rects.tray.x + state.rects.tray.w/2;

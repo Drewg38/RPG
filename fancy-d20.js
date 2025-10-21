@@ -1,4 +1,5 @@
 
+/*! fancy-d20.js v1.1 */
 (function(){
   "use strict";
   /**
@@ -117,4 +118,5 @@
 
   // Global export
   window.drawFancyD20 = drawFancyD20;
+  window.DICE_STYLE_VERSION = "fancy-d20@1.1";
 })();
