@@ -1,5 +1,5 @@
 
-/*! game.js v2.2 (uses fancy-d20 when available) */
+/*! game.js v2.3 — larger tray + fancy D20 integration */
 (function(){
   "use strict";
   if (window.__rpg_game_booted) return;
@@ -20,11 +20,11 @@
   // Content from CSV (provided by content.js)
   var pages   = (window.RPG_CONTENT && window.RPG_CONTENT.pages) || {};
   var startId = (window.RPG_CONTENT && window.RPG_CONTENT.startId) || Object.keys(pages)[0] || null;
-  if(!startId){ console.error("[game.js] No pages found"); return; }
+  if(!startId){ console.error("[game.js] No pages in RPG_CONTENT."); return; }
   var currentId = startId;
   var current   = pages[currentId];
 
-  // Hero header image
+  // Header image
   var hero = new Image(); hero.crossOrigin="anonymous"; var heroReady=false;
   function loadHero(src){
     heroReady=false; if(!src) return;
@@ -37,7 +37,7 @@
 
   var state = {
     selectedChoice: -1,
-    d: { x:0,y:0,r:56,vx:0,vy:0,ang:0,vang:0,grabbed:false,value:null,last:{x:0,y:0} },
+    d: { x:0,y:0,r:64,vx:0,vy:0,ang:0,vang:0,grabbed:false,value:null,last:{x:0,y:0} },
     rects: { scene:null, choices:[], tray:null, hint:null, result:null },
     stats: { Mind:0, Body:0, Spirit:0, Luck:0 }
   };
@@ -71,8 +71,9 @@
     if(current && current.flavor){ for(var i=0;i<current.flavor.length;i++){ h+=wrapHeight(current.flavor[i], textW, lineH, "14px system-ui, sans-serif")+6; } }
     state.rects.scene={x:pad,y:pad,w:W-pad*2,h:12+imgH+12+26+h};
 
+    // Larger tray (55% of canvas height, min 320)
     var trayTop = state.rects.scene.y + state.rects.scene.h + 20;
-    var trayH   = Math.max(240, Math.round((canvas.height/DPR)*0.42)); // Taller tray
+    var trayH   = Math.max(320, Math.round((canvas.height/DPR)*0.55));
     state.rects.tray={x:pad,y:trayTop,w:W-pad*2,h:trayH};
 
     state.d.x=state.rects.tray.x + state.rects.tray.w/2;
@@ -128,6 +129,8 @@
       rr(t.x+8,t.y+8,t.w-16,t.h-16,12);
       var deck=ctx.createLinearGradient(t.x,t.y,t.x,t.y+t.h); deck.addColorStop(0,"rgba(12,17,26,0.20)"); deck.addColorStop(1,"rgba(10,13,18,0.16)");
       ctx.fillStyle=deck; ctx.fill();
+
+      // Physics + wall bounces
       if(!state.d.grabbed){
         state.d.x+=state.d.vx; state.d.y+=state.d.vy; state.d.ang+=state.d.vang;
         var pad=12;
@@ -138,7 +141,8 @@
         state.d.vx*=0.994; state.d.vy*=0.994; state.d.vang*=0.994;
         if(Math.hypot(state.d.vx,state.d.vy)<0.05 && Math.abs(state.d.vang)<0.012){ state.d.vx=state.d.vy=state.d.vang=0; }
       }
-      // Use global fancy D20 if present
+
+      // Draw the new glossy D20 style if available
       if(typeof window.drawFancyD20 === "function"){
         window.drawFancyD20(ctx, state.d.x, state.d.y, state.d.r, state.d.ang, state.d.value, {vx:state.d.vx, vy:state.d.vy, vang:state.d.vang, grabbed:state.d.grabbed});
       }else{
