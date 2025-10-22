@@ -1,11 +1,19 @@
 
-/*! fancy-d20.js v1.2 — glossy prism D20 with sharper facets (CodePen-style) */
+/*! fancy-d20.js v1.3 — glossy, faceted D20 with spin impulse
+    API:
+      drawFancyD20(ctx, cx, cy, r, ang, value, kinetics)
+        - kinetics: { vx, vy, vang, grabbed } (all optional; used for trails)
+      fancyD20Impulse(d, power=1)  // helper to bump angular velocity
+
+    This aims to emulate the CodePen-shiny look:
+      • Cyan→violet body gradient
+      • Crisper facet rings (thicker strokes)
+      • Stronger specular sweeps
+      • Motion trails tied to velocity/rotation
+*/
 (function(){
   "use strict";
-  /**
-   * drawFancyD20(ctx, cx, cy, r, ang, value, kinetics)
-   * kinetics: { vx, vy, vang, grabbed }  // optional
-   */
+
   function drawFancyD20(ctx, cx, cy, r, ang, value, kinetics){
     kinetics = kinetics || {};
     var vx = +kinetics.vx || 0;
@@ -18,13 +26,13 @@
     ctx.rotate(ang);
 
     // Body gradient (cool cyan -> violet)
-    var g = ctx.createRadialGradient(-r*0.25, -r*0.35, r*0.15, 0, 0, r*1.05);
-    g.addColorStop(0.00, "#bfe7ff");
-    g.addColorStop(0.45, "#6aa7ff");
-    g.addColorStop(0.78, "#6d66ff");
+    var g = ctx.createRadialGradient(-r*0.25, -r*0.38, r*0.10, 0, 0, r*1.06);
+    g.addColorStop(0.00, "#ccecff");
+    g.addColorStop(0.42, "#80b9ff");
+    g.addColorStop(0.78, "#6b72ff");
     g.addColorStop(1.00, "#6a3dff");
 
-    // 20‑gon shell with slight sinusoidal jitter to fake facets
+    // Outer 20-gon shell (facet-y outline via sinusoidal jitter)
     ctx.beginPath();
     for (var i=0;i<20;i++){
       var a=(i/20)*Math.PI*2;
@@ -34,22 +42,23 @@
     }
     ctx.closePath();
     ctx.fillStyle=g;
-    ctx.shadowColor="rgba(0,0,0,0.42)";
-    ctx.shadowBlur=14;
-    ctx.shadowOffsetX=0; ctx.shadowOffsetY=6;
+    // Bigger, softer shadow for more depth
+    ctx.shadowColor="rgba(0,0,0,0.48)";
+    ctx.shadowBlur=r*0.22;
+    ctx.shadowOffsetX=0; ctx.shadowOffsetY=r*0.10;
     ctx.fill();
 
-    // Facet outlines (triangulated rings)
+    // Facet rings — thicker and higher contrast
     ctx.save();
-    ctx.globalAlpha=0.35;
-    ctx.lineWidth=Math.max(1, Math.floor(r*0.06));
-    ctx.strokeStyle="rgba(12,14,22,0.9)";
+    ctx.globalAlpha=0.42;
+    ctx.lineWidth=Math.max(1.5, r*0.065);
+    ctx.strokeStyle="rgba(10,12,20,0.95)";
     for (var ring=0; ring<3; ring++){
       var segs = 20;
-      var scale = 0.6 + ring*0.14;
+      var scale = 0.62 + ring*0.14;
       ctx.beginPath();
       for (var j=0; j<segs; j++){
-        var a2=(j/segs)*Math.PI*2 + ring*0.15;
+        var a2=(j/segs)*Math.PI*2 + ring*0.12;
         var rr2=r*scale*(0.98+0.06*Math.sin(j*1.2+ring));
         var x2=Math.cos(a2)*rr2;
         var y2=Math.sin(a2)*rr2;
@@ -60,45 +69,47 @@
     }
     ctx.restore();
 
-    // Outer rim sheen
+    // Rim sheen (subtle, bright)
     var rim=ctx.createLinearGradient(-r,0,r,0);
-    rim.addColorStop(0,"rgba(255,255,255,0.25)");
-    rim.addColorStop(1,"rgba(160,180,255,0.25)");
+    rim.addColorStop(0,"rgba(255,255,255,0.35)");
+    rim.addColorStop(1,"rgba(170,190,255,0.28)");
     ctx.strokeStyle=rim;
-    ctx.lineWidth=1.2;
+    ctx.lineWidth=Math.max(1, r*0.02);
     ctx.stroke();
 
-    // Specular sweeps (two ellipses)
-    ctx.globalAlpha=0.28;
+    // Specular sweeps (two layered ellipses)
+    ctx.save();
+    ctx.globalAlpha=0.34;
     ctx.beginPath();
-    ctx.ellipse(-r*0.28,-r*0.30, r*0.95, r*0.40, -0.65, 0, Math.PI*2);
+    ctx.ellipse(-r*0.28,-r*0.33, r*0.98, r*0.42, -0.62, 0, Math.PI*2);
     ctx.fillStyle="#ffffff";
     ctx.fill();
-    ctx.globalAlpha=0.2;
+    ctx.globalAlpha=0.22;
     ctx.beginPath();
-    ctx.ellipse(r*0.20,r*0.15, r*0.65, r*0.26, 0.8, 0, Math.PI*2);
+    ctx.ellipse(r*0.20,r*0.14, r*0.72, r*0.28, 0.78, 0, Math.PI*2);
     ctx.fill();
-    ctx.globalAlpha=1;
+    ctx.restore();
 
-    // Motion accent rings when spinning/moving fast
+    // Velocity/rotation-driven motion rings (visible when spinning/moving fast)
     var speed=Math.hypot(vx,vy)+Math.abs(vang)*22;
-    if(speed>4){
-      var layers=4;
+    if(speed>4 && !grabbed){
+      var layers=6;
       for (var k=1;k<=layers;k++){
-        var alpha=(layers-k+1)/layers*0.16;
+        var alpha=(layers-k+1)/layers*0.14;
         ctx.save();
-        ctx.rotate(vang*-0.22*k);
+        ctx.rotate(vang*-0.20*k);
         ctx.globalAlpha=alpha;
         ctx.beginPath();
         for (var t=0;t<20;t++){
           var a3=(t/20)*Math.PI*2;
-          var rr3=r*(0.92 + 0.02*k);
+          var rr3=r*(0.94 + 0.018*k);
           var x3=Math.cos(a3)*rr3;
           var y3=Math.sin(a3)*rr3;
           if(t===0) ctx.moveTo(x3,y3); else ctx.lineTo(x3,y3);
         }
         ctx.closePath();
-        ctx.strokeStyle="rgba(255,255,255,0.5)";
+        ctx.strokeStyle="rgba(255,255,255,0.55)";
+        ctx.lineWidth=Math.max(1, r*0.02);
         ctx.stroke();
         ctx.restore();
       }
@@ -107,7 +118,7 @@
     // Face value
     if(value!=null){
       ctx.fillStyle="#0b0c10";
-      var size=Math.floor(r*0.70);
+      var size=Math.floor(r*0.72);
       ctx.font="900 "+size+"px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
       ctx.textAlign="center";
       ctx.textBaseline="middle";
@@ -116,14 +127,25 @@
 
     ctx.restore();
 
-    // Soft drop shadow
-    ctx.fillStyle="rgba(0,0,0,0.38)";
+    // Soft drop shadow under die
+    ctx.save();
+    ctx.globalAlpha=0.45;
+    ctx.fillStyle="#000";
     ctx.beginPath();
-    ctx.ellipse(cx+6, cy+10, r*1.0, r*0.34, 0, 0, Math.PI*2);
+    ctx.ellipse(cx+6, cy+10, r*1.05, r*0.36, 0, 0, Math.PI*2);
     ctx.fill();
+    ctx.restore();
+  }
+
+  // Helper: add a spin impulse to an object holding { vang }
+  function fancyD20Impulse(d, power){
+    power = (power==null) ? 1 : +power;
+    if(!d) return;
+    d.vang = (d.vang||0) + 0.20*power;
   }
 
   // Global export
   window.drawFancyD20 = drawFancyD20;
-  window.DICE_STYLE_VERSION = "fancy-d20@1.2";
+  window.fancyD20Impulse = fancyD20Impulse;
+  window.DICE_STYLE_VERSION = "fancy-d20@1.3";
 })();
