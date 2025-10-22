@@ -1,5 +1,5 @@
 
-/*! game.js v2.3 — larger tray + fancy D20 integration */
+/*! game.js v2.5 — 3D D20 inside taller tray, auto-spin + fling + bounce */
 (function(){
   "use strict";
   if (window.__rpg_game_booted) return;
@@ -10,6 +10,11 @@
   if (!canvas || !canvas.getContext){ console.error("[game.js] Canvas not available"); return; }
   var ctx = canvas.getContext("2d");
 
+  var CFG = window.RPG_CONFIG || {};
+  var TRAY_SCALE = Number(CFG.trayScale || 0.80);
+  var TRAY_MIN   = Number(CFG.trayMin   || 420);
+  var DIE_R      = Number(CFG.dieRadius || 88);
+
   function clamp(n,mn,mx){ return Math.max(mn, Math.min(mx, n)); }
   function inRect(mx,my,r){ return r && mx>=r.x && mx<=r.x+r.w && my>=r.y && my<=r.y+r.h; }
   function rr(x,y,w,h,r){ r=Math.max(0,r||10); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
@@ -17,14 +22,12 @@
   function wrapHeight(text, maxW, lineH, font){ var prev=ctx.font; if(font) ctx.font=font; var w=splitWords(text), line='', h=lineH; for(var i=0;i<w.length;i++){ var t=line+w[i]+' '; if(ctx.measureText(t).width>maxW){ line=w[i]+' '; h+=lineH; } else { line=t; } } if(font) ctx.font=prev; return h; }
   function wrap(text,x,y,maxW,lineH,font){ var prev=ctx.font; if(font) ctx.font=font; var w=splitWords(text), line=''; for(var i=0;i<w.length;i++){ var t=line+w[i]+' '; if(ctx.measureText(t).width>maxW){ ctx.fillText(line,x,y); line=w[i]+' '; y+=lineH; } else { line=t; } } ctx.fillText(line,x,y); if(font) ctx.font=prev; return y+lineH; }
 
-  // Content from CSV (provided by content.js)
   var pages   = (window.RPG_CONTENT && window.RPG_CONTENT.pages) || {};
   var startId = (window.RPG_CONTENT && window.RPG_CONTENT.startId) || Object.keys(pages)[0] || null;
   if(!startId){ console.error("[game.js] No pages in RPG_CONTENT."); return; }
   var currentId = startId;
   var current   = pages[currentId];
 
-  // Header image
   var hero = new Image(); hero.crossOrigin="anonymous"; var heroReady=false;
   function loadHero(src){
     heroReady=false; if(!src) return;
@@ -37,12 +40,12 @@
 
   var state = {
     selectedChoice: -1,
-    d: { x:0,y:0,r:64,vx:0,vy:0,ang:0,vang:0,grabbed:false,value:null,last:{x:0,y:0} },
+    d: { x:0,y:0,r:DIE_R,vx:0,vy:0,ang:0,vang:0,grabbed:false,value:null,last:{x:0,y:0} },
+    d3:{ rx:0.7, ry:0.5, rz:0.0, vrx:0.03, vry:0.035, vrz:0.02 },
     rects: { scene:null, choices:[], tray:null, hint:null, result:null },
     stats: { Mind:0, Body:0, Spirit:0, Luck:0 }
   };
 
-  // Stars
   var starCanvas=null, starFor={w:0,h:0};
   function rebuildStars(W,H){
     var oc=document.createElement('canvas'); oc.width=W; oc.height=H;
@@ -71,13 +74,12 @@
     if(current && current.flavor){ for(var i=0;i<current.flavor.length;i++){ h+=wrapHeight(current.flavor[i], textW, lineH, "14px system-ui, sans-serif")+6; } }
     state.rects.scene={x:pad,y:pad,w:W-pad*2,h:12+imgH+12+26+h};
 
-    // Larger tray (55% of canvas height, min 320)
     var trayTop = state.rects.scene.y + state.rects.scene.h + 20;
-    var trayH   = Math.max(320, Math.round((canvas.height/DPR)*0.55));
+    var trayH   = Math.max(TRAY_MIN, Math.round((canvas.height/DPR)*TRAY_SCALE));
     state.rects.tray={x:pad,y:trayTop,w:W-pad*2,h:trayH};
 
     state.d.x=state.rects.tray.x + state.rects.tray.w/2;
-    state.d.y=state.rects.tray.y + state.rects.tray.h/2;
+    state.d.y=state.rects.tray.y + Math.min(state.rects.tray.h- state.d.r - 20, state.rects.tray.h/2);
 
     var cW=Math.floor((W-pad*2-24)/3);
     var choiceY=state.rects.tray.y + state.rects.tray.h + 24;
@@ -104,7 +106,6 @@
     if(!starCanvas || starFor.w!==canvas.width || starFor.h!==canvas.height){ rebuildStars(canvas.width, canvas.height); }
     if(starCanvas){ try{ ctx.drawImage(starCanvas,0,0,W,H); }catch(_){} }
 
-    // Scene
     var r=state.rects.scene;
     if(r){
       var inner={x:r.x,y:r.y,w:r.w,h:280};
@@ -120,7 +121,6 @@
       if(current && current.flavor){ for(var i=0;i<current.flavor.length;i++){ y=wrap(current.flavor[i], x, y, r.w-28, 18, "14px system-ui, sans-serif"); y+=6; } }
     }
 
-    // Tray
     var t=state.rects.tray;
     if(t){
       rr(t.x,t.y,t.w,t.h,16);
@@ -130,30 +130,27 @@
       var deck=ctx.createLinearGradient(t.x,t.y,t.x,t.y+t.h); deck.addColorStop(0,"rgba(12,17,26,0.20)"); deck.addColorStop(1,"rgba(10,13,18,0.16)");
       ctx.fillStyle=deck; ctx.fill();
 
-      // Physics + wall bounces
       if(!state.d.grabbed){
         state.d.x+=state.d.vx; state.d.y+=state.d.vy; state.d.ang+=state.d.vang;
+        if(typeof window.stepD20Rotation === "function"){ window.stepD20Rotation(state.d3, {vrx:state.d3.vrx, vry:state.d3.vry, vrz:state.d3.vrz}); }
         var pad=12;
-        if(state.d.x-state.d.r<=t.x+pad){ state.d.x=t.x+pad+state.d.r; state.d.vx*=-0.93; state.d.vang*=-0.93; }
-        if(state.d.y-state.d.r<=t.y+pad){ state.d.y=t.y+pad+state.d.r; state.d.vy*=-0.93; state.d.vang*=-0.93; }
-        if(state.d.x+state.d.r>=t.x+t.w-pad){ state.d.x=t.x+t.w-pad-state.d.r; state.d.vx*=-0.93; state.d.vang*=-0.93; }
-        if(state.d.y+state.d.r>=t.y+t.h-pad){ state.d.y=t.y+t.h-pad-state.d.r; state.d.vy*=-0.93; state.d.vang*=-0.93; }
-        state.d.vx*=0.994; state.d.vy*=0.994; state.d.vang*=0.994;
+        if(state.d.x-state.d.r<=t.x+pad){ state.d.x=t.x+pad+state.d.r; state.d.vx*=-0.93; state.d.vang*=-0.93; state.d3.vry*=-0.93; }
+        if(state.d.y-state.d.r<=t.y+pad){ state.d.y=t.y+pad+state.d.r; state.d.vy*=-0.93; state.d.vang*=-0.93; state.d3.vrx*=-0.93; }
+        if(state.d.x+state.d.r>=t.x+t.w-pad){ state.d.x=t.x+t.w-pad-state.d.r; state.d.vx*=-0.93; state.d.vang*=-0.93; state.d3.vry*=-0.93; }
+        if(state.d.y+state.d.r>=t.y+t.h-pad){ state.d.y=t.y+t.h-pad-state.d.r; state.d.vy*=-0.93; state.d.vang*=-0.93; state.d3.vrx*=-0.93; }
+        state.d.vx*=0.994; state.d.vy*=0.994; state.d.vang*=0.994; state.d3.vrx*=0.996; state.d3.vry*=0.996; state.d3.vrz*=0.996;
         if(Math.hypot(state.d.vx,state.d.vy)<0.05 && Math.abs(state.d.vang)<0.012){ state.d.vx=state.d.vy=state.d.vang=0; }
       }
 
-      // Draw the new glossy D20 style if available
-      if(typeof window.drawFancyD20 === "function"){
+      if(typeof window.drawD20_3D === "function"){
+        window.drawD20_3D(ctx, state.d.x, state.d.y, state.d.r, state.d3, { faceColor:"#4169e1", edgeColor:"rgba(255,255,255,0.55)", numberColor:"#ffffff" });
+      } else if(typeof window.drawFancyD20 === "function"){
         window.drawFancyD20(ctx, state.d.x, state.d.y, state.d.r, state.d.ang, state.d.value, {vx:state.d.vx, vy:state.d.vy, vang:state.d.vang, grabbed:state.d.grabbed});
-      }else{
-        // Minimal fallback disk
-        ctx.fillStyle="#6d42ff";
-        ctx.beginPath(); ctx.arc(state.d.x, state.d.y, state.d.r, 0, Math.PI*2); ctx.fill();
-        if(state.d.value!=null){ ctx.fillStyle="#0b0c10"; ctx.font="bold "+Math.floor(state.d.r*0.7)+"px system-ui"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(String(state.d.value), state.d.x, state.d.y); }
+      } else {
+        ctx.fillStyle="#6d42ff"; ctx.beginPath(); ctx.arc(state.d.x, state.d.y, state.d.r, 0, Math.PI*2); ctx.fill();
       }
     }
 
-    // Choices
     var cards=state.rects.choices;
     var choices=(current && current.choices) || [];
     for(var i=0;i<cards.length;i++){
@@ -169,9 +166,8 @@
       wrap(txt, c.x+14, c.y+44, c.w-28, 18, "600 14px system-ui, sans-serif");
     }
 
-    // Hint / result
     var h=state.rects.hint;
-    if(h){ var grad=ctx.createLinearGradient(h.x,h.y,h.x+h.w,h.y+24); grad.addColorStop(0,"#93c5fd"); grad.addColorStop(1,"#c4b5fd"); ctx.save(); ctx.fillStyle=grad; ctx.font="800 20px system-ui, sans-serif"; ctx.fillText("After you choose, drag the die to roll.", h.x, h.y+18); ctx.restore(); }
+    if(h){ var grad=ctx.createLinearGradient(h.x,h.y,h.x+h.w,h.y+24); grad.addColorStop(0,"#93c5fd"); grad.addColorStop(1,"#c4b5fd"); ctx.save(); ctx.fillStyle=grad; ctx.font="800 20px system-ui, sans-serif"; ctx.fillText("After you choose, drag or fling the die to roll.", h.x, h.y+18); ctx.restore(); }
     var rres=state.rects.result;
     if(rres && state.d && state.d.value!=null){ var g2=ctx.createLinearGradient(rres.x,rres.y,rres.x+320,rres.y+24); g2.addColorStop(0,"#93c5fd"); g2.addColorStop(1,"#a78bfa"); ctx.save(); ctx.fillStyle=g2; ctx.font="800 22px system-ui, sans-serif"; ctx.fillText("Roll result: "+state.d.value, rres.x, rres.y+18); ctx.restore(); }
 
@@ -200,6 +196,7 @@
     var t=state.rects.tray; if(!t) return;
     if(inRect(mx,my,t) && Math.hypot(mx-state.d.x,my-state.d.y)<=state.d.r){
       state.d.grabbed=true; state.d.last.x=mx; state.d.last.y=my; state.d.vx=state.d.vy=state.d.vang=0;
+      state.d3.vrx += 0.02; state.d3.vry += 0.025;
     }
   });
 
@@ -213,6 +210,7 @@
     state.d.y = clamp(my, t.y+12+state.d.r, t.y+t.h-12-state.d.r);
     var dx=mx-state.d.last.x, dy=my-state.d.last.y;
     state.d.vx=dx*1.25; state.d.vy=dy*1.25; state.d.vang=(dx-dy)*0.045;
+    state.d3.vrx += dy*0.0008; state.d3.vry += dx*0.0008; state.d3.vrz += (dx-dy)*0.0004;
     state.d.last.x=mx; state.d.last.y=my;
   });
 
